@@ -29,6 +29,7 @@
 #include <libavutil/timestamp.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <unistd.h>
 #include "ipcamvideofilefmt.h"
 
 #define MAX_EXTENSION_LEN   12
@@ -84,6 +85,7 @@ void ShowHelp(char *command, int exitcode) {
     fprintf(stderr, "  -n              Ignore audio data\n");
     fprintf(stderr, "  -f format_name  Force output format to format_name (ex: -f matroska)\n");
     fprintf(stderr, "  -q              Quiet output. Only print errors.\n");
+    fprintf(stderr, "  -y              Overwrite output file if it exists.\n");
     fprintf(stderr, "  input.264       Input video file as produced by camera\n");
     fprintf(stderr, "  output.fmt      Output file. Format is guessed by extension (ex: output.mkv\n");
     fprintf(stderr, "                  will produce a Matroska file). If no output file is specified\n");
@@ -99,8 +101,9 @@ int main(int argc, char *argv[]) {
     int opt;
     bool skip_audio = false;
     bool quiet = false;
+    bool overwrite_existing = false;
     char *format_name = NULL;
-    while ((opt = getopt(argc, argv, ":nqf:")) != -1) {
+    while ((opt = getopt(argc, argv, ":nqyf:")) != -1) {
         switch (opt) {
             case 'n':
                 skip_audio = true;
@@ -108,6 +111,10 @@ int main(int argc, char *argv[]) {
 
             case 'q':
                 quiet = true;
+                break;
+
+            case 'y':
+                overwrite_existing = true;
                 break;
 
             case 'f':
@@ -400,6 +407,14 @@ int main(int argc, char *argv[]) {
     } else {
         if (!quiet) {
             fprintf(stderr, "Audio processing is disabled.\n");
+        }
+    }
+
+    if (!overwrite_existing) {
+        if (access(format_ctx->filename, F_OK) == 0) {
+            fprintf(stderr, "Output file %s already exists but can't overwrite it, exiting.\n",
+                    format_ctx->filename);
+            exit(0);
         }
     }
 
