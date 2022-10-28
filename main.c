@@ -80,7 +80,7 @@ bool EndsWith(const char *str, const char *suffix) {
 
 void ShowHelp(char *command, int exitcode) {
     fprintf(stderr, "Convert surveillance cameras \".264\" files into any a/v format supported by LibAV/FFMpeg.\n");
-    fprintf(stderr, "Usage: %s [-n] [-f format_name] input.264 [output.fmt]\n", basename(command));
+    fprintf(stderr, "Usage: %s [-n] [-f format_name] [-q] input.264 [output.fmt]\n", basename(command));
     fprintf(stderr, "  -n              Ignore audio data\n");
     fprintf(stderr, "  -f format_name  Force output format to format_name (ex: -f matroska)\n");
     fprintf(stderr, "  -q              Quiet output. Only print errors.\n");
