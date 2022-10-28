@@ -3,22 +3,26 @@
 Simple tool to convert surveillance cameras ".264" files into any a/v format supported by LibAV/FFMpeg.
 
 ```
-Usage: ipcam264convert [-n] [-f format_name] input.264 [output.fmt]
--n              Ignore audio data
--f format_name  Force output format to format_name (ex: -f matroska)
--q              Quiet output. Only print errors.
-input.264       Input video file as produced by camera
-output.fmt      Output file. Format is guessed by extension (ex: output.mkv
-                will produce a Matroska file). If no output file is specified
-                one will be generated based on input file and the default
-                extension associated with the format provided through -f.
-                Note that you have to provide at least a valid output file
-                extension or a format name through -f option.
+Usage: ipcam264convert [-n] [-f format_name] [-q] input.264 [output.fmt]
+  -n              Ignore audio data
+  -f format_name  Force output format to format_name (ex: -f matroska)
+  -q              Quiet output. Only print errors.
+  -y              Overwrite output file if it exists.
+  input.264       Input video file as produced by camera
+  output.fmt      Output file. Format is guessed by extension (ex: output.mkv
+                  will produce a Matroska file). If no output file is specified
+                  one will be generated based on input file and the default
+                  extension associated with the format provided through -f.
+                  Note that you have to provide at least a valid output file
+                  extension or a format name through -f option.
 
 Available output formats and codecs depend on system LibAV/FFMpeg libraries.
 ```
 
-Inspired by https://spitzner.org/kkmoon.html
+This tool doesn't perform any transcoding: the original audio and video data is copied directly to the output container
+streams. This work has been inspired by Ralph Spitzner reverse engineering of his KKMoon camera output files 
+(https://spitzner.org/kkmoon.html). If you like this tool, please consider donating to Ralph via the "Donate" button 
+available on his page.
 
 ### Supported cameras
 
