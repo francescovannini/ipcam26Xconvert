@@ -33,6 +33,7 @@
 #include "ipcamvideofilefmt.h"
 
 #define MAX_EXTENSION_LEN   12
+#define TIMEBASE_MS         1000.0f
 
 size_t ReadToBuffer(FILE *fp_src, uint8_t **dest, size_t dest_offset, unsigned long length, size_t *dest_size) {
 
@@ -95,6 +96,88 @@ void ShowHelp(char *command, int exitcode) {
     fprintf(stderr, "                  extension or a format name through -f option.\n");
     fprintf(stderr, "\nAvailable output formats and codecs depend on system LibAV/FFMpeg libraries.\n");
     exit(exitcode);
+}
+
+bool InitAVStreams(AVFormatContext *format_ctx, int video_w, int video_h, double video_avg_frame_rate,
+                   long video_packets_count, double audio_avg_sample_rate) {
+    int retval;
+
+    // Video stream. Video codec is only used to generate a valid header, not for actual encoding
+    AVCodec *v_codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+    AVStream *v_stream = avformat_new_stream(format_ctx, v_codec);
+    if (!v_stream) {
+        fprintf(stderr, "Could not allocate stream.\n");
+        return false;
+    }
+
+    AVCodecContext *v_encoder = avcodec_alloc_context3(v_codec);
+    v_encoder->time_base = (AVRational) {1, TIMEBASE_MS}; // Raw stream timestamps are in milliseconds
+    v_encoder->framerate = (AVRational) {(int) round(video_avg_frame_rate), 1};
+    v_encoder->pix_fmt = AV_PIX_FMT_YUV420P;
+    v_encoder->width = video_w;
+    v_encoder->height = video_h;
+    if (format_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
+        v_encoder->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    }
+
+    if ((retval = avcodec_open2(v_encoder, v_codec, NULL)) < 0) {
+        fprintf(stderr, "Could not open codec: %s\n", av_err2str(retval));
+        return false;
+    }
+
+    if ((retval = avcodec_parameters_from_context(v_stream->codecpar, v_encoder)) < 0) {
+        fprintf(stderr, "Could not set video stream parameters: %s\n", av_err2str(retval));
+        return false;
+    }
+
+    // We only need the encoder for parameters
+    avcodec_free_context(&v_encoder);
+
+    v_stream->avg_frame_rate = (AVRational) {(int) round(video_avg_frame_rate), 1};
+    v_stream->nb_frames = video_packets_count;
+    v_stream->id = 0;
+
+    if (audio_avg_sample_rate <= 0) {
+        return true;
+    }
+
+    // Audio stream
+    AVCodec *a_codec = NULL;
+    AVStream *a_stream = NULL;
+    a_codec = avcodec_find_encoder(AV_CODEC_ID_PCM_ALAW);
+
+    // Audio stream
+    a_stream = avformat_new_stream(format_ctx, a_codec);
+    if (!a_stream) {
+        fprintf(stderr, "Could not allocate stream.\n");
+        return false;
+    }
+
+    AVCodecContext *a_encoder = avcodec_alloc_context3(a_codec);
+    a_encoder->time_base = (AVRational) {1, TIMEBASE_MS}; // Raw stream timestamps are in milliseconds
+    a_encoder->sample_rate = (int) round(audio_avg_sample_rate * TIMEBASE_MS);
+    a_encoder->sample_fmt = AV_SAMPLE_FMT_S16;
+    a_encoder->channel_layout = AV_CH_LAYOUT_MONO;
+    a_encoder->channels = 1;
+
+    if (format_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
+        a_encoder->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    }
+
+    if ((retval = avcodec_open2(a_encoder, a_codec, NULL)) < 0) {
+        fprintf(stderr, "Could not open codec: %s\n", av_err2str(retval));
+        return false;
+    }
+
+    if ((retval = avcodec_parameters_from_context(a_stream->codecpar, a_encoder)) < 0) {
+        fprintf(stderr, "Could not set audio stream parameters: %s\n", av_err2str(retval));
+        return false;
+    }
+
+    // We only need the encoder for parameters
+    avcodec_free_context(&a_encoder);
+    a_stream->id = 1;
+    return true;
 }
 
 int main(int argc, char *argv[]) {
@@ -241,10 +324,10 @@ int main(int argc, char *argv[]) {
                         if (video_packets_count) {
                             video_avg_frame_rate =
                                     (video_avg_frame_rate * (double) video_packets_count +
-                                     (1000.0f / (double) elapsed)) /
+                                     (TIMEBASE_MS / (double) elapsed)) /
                                     ((double) video_packets_count + 1);
                         } else {
-                            video_avg_frame_rate = 1000.0f / (double) elapsed;
+                            video_avg_frame_rate = TIMEBASE_MS / (double) elapsed;
                         }
                         video_packets_count++;
                     }
@@ -320,94 +403,29 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Video stream. Video codec is only used to generate a valid header, not for actual encoding
-    AVCodec *v_codec = avcodec_find_encoder(AV_CODEC_ID_H264);
-    AVStream *v_stream = avformat_new_stream(format_ctx, v_codec);
-    if (!v_stream) {
-        fprintf(stderr, "Could not allocate stream.\n");
-        exit(1);
-    }
-
-    AVCodecContext *v_encoder = avcodec_alloc_context3(v_codec);
-    v_encoder->time_base = (AVRational) {1, 1000}; // Raw stream timestamps are in milliseconds
-    v_encoder->framerate = (AVRational) {(int) round(video_avg_frame_rate), 1};
-    v_encoder->pix_fmt = AV_PIX_FMT_YUV420P;
-    v_encoder->width = video_w;
-    v_encoder->height = video_h;
-    if (format_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
-        v_encoder->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-    }
-
-    if ((retval = avcodec_open2(v_encoder, v_codec, NULL)) < 0) {
-        fprintf(stderr, "Could not open codec: %s\n", av_err2str(retval));
-        exit(1);
-    }
-
-    if ((retval = avcodec_parameters_from_context(v_stream->codecpar, v_encoder)) < 0) {
-        fprintf(stderr, "Could not set video stream parameters: %s\n", av_err2str(retval));
-        exit(1);
-    }
-
-    // We only need the encoder for parameters
-    avcodec_free_context(&v_encoder);
-
-    v_stream->avg_frame_rate = (AVRational) {(int) round(video_avg_frame_rate), 1};
-    v_stream->nb_frames = video_packets_count;
-    v_stream->id = (int) format_ctx->nb_streams - 1; // Last stream
-
     if (!quiet) {
-        fprintf(stderr, "Detected video frame rate: %d\n", (int) av_q2d(v_stream->avg_frame_rate));
+        fprintf(stderr, "Detected video frame rate: %d\n", (int) round(video_avg_frame_rate));
     }
 
-    // Audio stream
-    AVCodec *a_codec = NULL;
-    AVStream *a_stream = NULL;
-    if (!skip_audio) {
-        a_codec = avcodec_find_encoder(AV_CODEC_ID_PCM_ALAW);
-        if (audio_avg_sample_rate <= 0) {
-            fprintf(stderr, "Warning! No audio detected.\n");
-        } else {
-            // Audio stream
-            a_stream = avformat_new_stream(format_ctx, a_codec);
-            if (!a_stream) {
-                fprintf(stderr, "Could not allocate stream.\n");
-                exit(1);
-            }
-
-            AVCodecContext *a_encoder = avcodec_alloc_context3(a_codec);
-            a_encoder->time_base = (AVRational) {1, 1000}; // Raw stream timestamps are in milliseconds
-            a_encoder->sample_rate = (int) round(audio_avg_sample_rate * 1000.0f);
-            a_encoder->sample_fmt = AV_SAMPLE_FMT_S16;
-            a_encoder->channel_layout = AV_CH_LAYOUT_MONO;
-            a_encoder->channels = 1;
-
-            if (format_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
-                a_encoder->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-            }
-
-            if ((retval = avcodec_open2(a_encoder, a_codec, NULL)) < 0) {
-                fprintf(stderr, "Could not open codec: %s\n", av_err2str(retval));
-                exit(1);
-            }
-
-            if ((retval = avcodec_parameters_from_context(a_stream->codecpar, a_encoder)) < 0) {
-                fprintf(stderr, "Could not set audio stream parameters: %s\n", av_err2str(retval));
-                exit(1);
-            }
-
-            // We only need the encoder for parameters
-            avcodec_free_context(&a_encoder);
-
-            a_stream->id = (int) format_ctx->nb_streams - 1; //Last stream
-            if (!quiet) {
-                fprintf(stderr, "Detected audio PCM frequency: %d\n", a_stream->codecpar->sample_rate);
-            }
-
-        }
-    } else {
+    if (skip_audio) {
         if (!quiet) {
             fprintf(stderr, "Audio processing is disabled.\n");
         }
+        audio_avg_sample_rate = 0;
+    } else {
+        if (!quiet) {
+            if (audio_avg_sample_rate <= 0) {
+                fprintf(stderr, "Warning! No audio detected.\n");
+            } else {
+                fprintf(stderr, "Detected audio PCM frequency: %d\n", (int) round(audio_avg_sample_rate * TIMEBASE_MS));
+            }
+        }
+    }
+
+    // Init streams
+    if (!InitAVStreams(format_ctx, video_w, video_h, video_avg_frame_rate, video_packets_count,
+                       audio_avg_sample_rate)) {
+        exit(1);
     }
 
     if (!overwrite_existing) {
@@ -425,7 +443,6 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
     }
-
     if ((retval = avformat_write_header(format_ctx, NULL)) < 0) {
         fprintf(stderr, "Error occurred when opening output file: %s\n", av_err2str(retval));
         exit(1);
@@ -475,9 +492,8 @@ int main(int argc, char *argv[]) {
                     packet.data = packet_buffer;
                     packet.size = retval + packet_buffer_offset;
                     packet_buffer_offset = 0;
-                    packet.stream_index = v_stream->index;
-                    packet.pts = packet.dts = (int) round((double) (hx_frame.data.hxvf.timestamp - video_ts_initial) /
-                                                          (1000.0f * av_q2d(v_stream->time_base)));
+                    packet.stream_index = 0;
+                    packet.pts = packet.dts = (int) round((double) (hx_frame.data.hxvf.timestamp - video_ts_initial));
                     if ((retval = av_interleaved_write_frame(format_ctx, &packet)) < 0) {
                         fprintf(stderr, "Error while writing output packet: %s\n", av_err2str(retval));
                         exit(1);
@@ -491,7 +507,7 @@ int main(int argc, char *argv[]) {
                     exit(1);
                 }
 
-                if (a_stream) {
+                if (audio_avg_sample_rate > 0) {
                     retval = (int) ReadToBuffer(in_file, &packet_buffer, 0,
                                                 hx_frame.data.hxaf.length - 4, &packet_buffer_length);
 
@@ -502,9 +518,8 @@ int main(int argc, char *argv[]) {
 
                     packet.data = packet_buffer;
                     packet.size = retval;
-                    packet.stream_index = a_stream->index;
-                    packet.pts = packet.dts = (int) round((double) (hx_frame.data.hxaf.timestamp - audio_ts_initial) /
-                                                          (1000.0f * av_q2d(a_stream->time_base)));
+                    packet.stream_index = 1;
+                    packet.pts = packet.dts = (int) round((double) (hx_frame.data.hxaf.timestamp - audio_ts_initial));
                     if ((retval = av_interleaved_write_frame(format_ctx, &packet)) < 0) {
                         fprintf(stderr, "Error while writing output packet: %s\n", av_err2str(retval));
                         exit(1);
