@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Francesco Vannini
+// Copyright (C) 2023 Francesco Vannini
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -81,13 +81,13 @@ bool EndsWith(const char *str, const char *suffix) {
 }
 
 void ShowHelp(char *command, int exitcode) {
-    fprintf(stderr, "Convert surveillance cameras \".264\" files into any a/v format supported by LibAV/FFMpeg.\n");
+    fprintf(stderr, "Convert surveillance cameras \".264/.265\" files into any a/v format supported by LibAV/FFMpeg.\n");
     fprintf(stderr, "Usage: %s [-n] [-f format_name] [-q] input.264 [output.fmt]\n", basename(command));
     fprintf(stderr, "  -n              Ignore audio data\n");
     fprintf(stderr, "  -f format_name  Force output format to format_name (ex: -f matroska)\n");
     fprintf(stderr, "  -q              Quiet output. Only print errors.\n");
     fprintf(stderr, "  -y              Overwrite output file if it exists.\n");
-    fprintf(stderr, "  input.264       Input video file as produced by camera\n");
+    fprintf(stderr, "  input.26x       Input video file as produced by camera\n");
     fprintf(stderr, "  output.fmt      Output file. Format is guessed by extension (ex: output.mkv\n");
     fprintf(stderr, "                  will produce a Matroska file). If no output file is specified\n");
     fprintf(stderr, "                  one will be generated based on input file and the default\n");
@@ -98,12 +98,12 @@ void ShowHelp(char *command, int exitcode) {
     exit(exitcode);
 }
 
-bool InitAVStreams(AVFormatContext *format_ctx, int video_w, int video_h, double video_avg_frame_rate,
-                   long video_packets_count, double audio_avg_sample_rate) {
+bool InitAVStreams(AVFormatContext *format_ctx, int video_w, int video_h, enum AVCodecID video_id,
+                   double video_avg_frame_rate, long video_packets_count, double audio_avg_sample_rate) {
     int retval;
 
     // Video stream. Video codec is only used to generate a valid header, not for actual encoding
-    AVCodec *v_codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+    AVCodec *v_codec = avcodec_find_encoder(video_id);
     AVStream *v_stream = avformat_new_stream(format_ctx, v_codec);
     if (!v_stream) {
         fprintf(stderr, "Could not allocate stream.\n");
@@ -252,7 +252,7 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            if (EndsWith(in_filename, ".264")) {
+            if (EndsWith(in_filename, ".264") || EndsWith(in_filename, ".265")) {
                 strncpy(format_ctx->filename, in_filename, strlen(in_filename) - 4);
             } else {
                 strcat(format_ctx->filename, in_filename);
@@ -279,6 +279,7 @@ int main(int argc, char *argv[]) {
     bool hxfi_detected = false;
     HXFrame_t hx_frame;
     int video_w, video_h;
+    enum AVCodecID video_id;
     double video_avg_frame_rate = 0;
     double audio_avg_sample_rate = 0;
     long video_ts_initial = -1, audio_ts_initial = -1;
@@ -299,11 +300,27 @@ int main(int argc, char *argv[]) {
                     exit(1);
                 }
 
+                video_id = AV_CODEC_ID_H264;
                 video_w = (int) hx_frame.data.hxvs.width;
                 video_h = (int) hx_frame.data.hxvs.height;
 
                 if (!quiet) {
-                    fprintf(stderr, "Reported video dimensions: %d x %d\n", video_w, video_h);
+                    fprintf(stderr, "Detected h264 video dimensions: %d x %d\n", video_w, video_h);
+                }
+                break;
+
+            case HXVT:
+                if (fread(&hx_frame.data, 1, sizeof(HXVTFrame_t), in_file) != sizeof(HXVTFrame_t)) {
+                    fprintf(stderr, "Premature end of file, aborting.\n");
+                    exit(1);
+                }
+
+                video_id = AV_CODEC_ID_H265;
+                video_w = (int) hx_frame.data.hxvt.width;
+                video_h = (int) hx_frame.data.hxvt.height;
+
+                if (!quiet) {
+                    fprintf(stderr, "Detected h265 video dimensions: %d x %d\n", video_w, video_h);
                 }
                 break;
 
@@ -423,7 +440,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Init streams
-    if (!InitAVStreams(format_ctx, video_w, video_h, video_avg_frame_rate, video_packets_count,
+    if (!InitAVStreams(format_ctx, video_w, video_h, video_id, video_avg_frame_rate, video_packets_count,
                        audio_avg_sample_rate)) {
         exit(1);
     }
@@ -470,6 +487,13 @@ int main(int argc, char *argv[]) {
                 }
                 break;
 
+            case HXVT:
+                if (fseek(in_file, sizeof(HXVTFrame_t), SEEK_CUR) < 0) {
+                    fprintf(stderr, "Seek error, aborting.\n");
+                    exit(1);
+                }
+                break;
+
             case HXVF:
                 if (fread(&hx_frame.data, 1, sizeof(HXVFFrame_t), in_file) != sizeof(HXVFFrame_t)) {
                     fprintf(stderr, "Premature end of file, aborting.\n");
@@ -484,7 +508,7 @@ int main(int argc, char *argv[]) {
                     exit(1);
                 }
 
-                H264_Nal_Header_t *nal_header = (H264_Nal_Header_t *) (packet_buffer + packet_buffer_offset);
+                H26X_Nal_Header_t *nal_header = (H26X_Nal_Header_t *) (packet_buffer + packet_buffer_offset);
 
                 if (nal_header->unit_type == 7 || nal_header->unit_type == 8) {
                     packet_buffer_offset += retval; // enqueue data in buffer, wait for a different type to write a packet
