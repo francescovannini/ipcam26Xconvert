@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Francesco Vannini
+// Copyright (C) 2023 Francesco Vannini
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -26,6 +26,13 @@ typedef struct HXVSFrame_t {
     uint8_t  padding[4];
 } HXVSFrame_t;
 
+#define HXVT 1414944840
+typedef struct HXVTFrame_t {
+    uint32_t width;
+    uint32_t height;
+    uint8_t  padding[4];
+} HXVTFrame_t;
+
 #define HXVF 1180063816
 typedef struct HXVFFrame_t {
     uint32_t length;
@@ -50,17 +57,18 @@ typedef struct HXFrame_t {
     uint32_t header;
     union {
         struct HXVSFrame_t hxvs;
+        struct HXVTFrame_t hxvt;
         struct HXVFFrame_t hxvf;
         struct HXAFFrame_t hxaf;
         struct HXFIFrame_t hxfi;
     } data;
 } HXFrame_t;
 
-typedef struct H264_Nal_Header_t { // https://stackoverflow.com/a/38095609
+typedef struct H26X_Nal_Header_t { // https://stackoverflow.com/a/38095609
     uint8_t start_code[4];
     uint8_t unit_type:5;
     uint8_t nri:2;
     uint8_t f:1;
-} H264_Nal_Header_t;
+} H26X_Nal_Header_t;
 
 #endif
