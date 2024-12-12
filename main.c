@@ -1,4 +1,4 @@
-// Copyright (C) 2023 Francesco Vannini
+// Copyright (C) 2024 Francesco Vannini
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -103,7 +103,7 @@ bool InitAVStreams(AVFormatContext *format_ctx, int video_w, int video_h, enum A
     int retval;
 
     // Video stream. Video codec is only used to generate a valid header, not for actual encoding
-    AVCodec *v_codec = avcodec_find_encoder(video_id);
+    const AVCodec *v_codec = avcodec_find_encoder(video_id);
     AVStream *v_stream = avformat_new_stream(format_ctx, v_codec);
     if (!v_stream) {
         fprintf(stderr, "Could not allocate stream.\n");
@@ -142,12 +142,8 @@ bool InitAVStreams(AVFormatContext *format_ctx, int video_w, int video_h, enum A
     }
 
     // Audio stream
-    AVCodec *a_codec = NULL;
-    AVStream *a_stream = NULL;
-    a_codec = avcodec_find_encoder(AV_CODEC_ID_PCM_ALAW);
-
-    // Audio stream
-    a_stream = avformat_new_stream(format_ctx, a_codec);
+    const AVCodec *a_codec = avcodec_find_encoder(AV_CODEC_ID_PCM_ALAW);
+    AVStream *a_stream = avformat_new_stream(format_ctx, a_codec);
     if (!a_stream) {
         fprintf(stderr, "Could not allocate stream.\n");
         return false;
@@ -220,8 +216,7 @@ int main(int argc, char *argv[]) {
     }
 
     av_log_set_level(AV_LOG_ERROR);
-    av_register_all();
-    avcodec_register_all();
+    //av_register_all();
     int retval;
 
     // Init format_ctx based on format name
@@ -233,7 +228,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (optind < argc) {
-            sprintf(format_ctx->filename, "%s", argv[optind]);
+            sprintf(format_ctx->url, "%s", argv[optind]);
         } else {
             // Generate output file name based on default format extension
             char ext[MAX_EXTENSION_LEN] = ".";
@@ -253,13 +248,13 @@ int main(int argc, char *argv[]) {
             }
 
             if (EndsWith(in_filename, ".264") || EndsWith(in_filename, ".265")) {
-                strncpy(format_ctx->filename, in_filename, strlen(in_filename) - 4);
+                strncpy(format_ctx->url, in_filename, strlen(in_filename) - 4);
             } else {
-                strcat(format_ctx->filename, in_filename);
+                strcat(format_ctx->url, in_filename);
             }
-            strcat(format_ctx->filename, ext);
+            strcat(format_ctx->url, ext);
             if (!quiet) {
-                fprintf(stderr, "Output file is %s\n", format_ctx->filename);
+                fprintf(stderr, "Output file is %s\n", format_ctx->url);
             }
         }
     } else {
@@ -410,7 +405,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    AVOutputFormat *out_fmt = format_ctx->oformat;
+    const AVOutputFormat *out_fmt = format_ctx->oformat;
     if (!quiet) {
         if (format_ctx->oformat->mime_type) {
             fprintf(stderr, "Selected output format: %s (%s)\n", format_ctx->oformat->long_name,
@@ -446,16 +441,16 @@ int main(int argc, char *argv[]) {
     }
 
     if (!overwrite_existing) {
-        if (access(format_ctx->filename, F_OK) == 0) {
+        if (access(format_ctx->url, F_OK) == 0) {
             fprintf(stderr, "Output file %s already exists but can't overwrite it, exiting.\n",
-                    format_ctx->filename);
+                    format_ctx->url);
             exit(0);
         }
     }
 
     // Open output file and write header
     if (!(out_fmt->flags & AVFMT_NOFILE)) {
-        if ((retval = avio_open(&(format_ctx->pb), format_ctx->filename, AVIO_FLAG_WRITE)) < 0) {
+        if ((retval = avio_open(&(format_ctx->pb), format_ctx->url, AVIO_FLAG_WRITE)) < 0) {
             fprintf(stderr, "Could not open output file: %s\n", av_err2str(retval));
             exit(1);
         }
