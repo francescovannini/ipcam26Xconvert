@@ -84,16 +84,13 @@ void ShowHelp(char *command, int exitcode) {
     fprintf(stderr, "Convert surveillance cameras \".264/.265\" files into any a/v format supported by LibAV/FFMpeg.\n");
     fprintf(stderr, "Usage: %s [-n] [-f format_name] [-q] input.264 [output.fmt]\n", basename(command));
     fprintf(stderr, "  -n              Ignore audio data\n");
-    fprintf(stderr, "  -f format_name  Force output format to format_name (ex: -f matroska)\n");
+    fprintf(stderr, "  -f format_name  Force output format to format_name (default: -f matroska)\n");
     fprintf(stderr, "  -q              Quiet output. Only print errors.\n");
     fprintf(stderr, "  -y              Overwrite output file if it exists.\n");
     fprintf(stderr, "  input.26x       Input video file as produced by camera\n");
     fprintf(stderr, "  output.fmt      Output file. Format is guessed by extension (ex: output.mkv\n");
     fprintf(stderr, "                  will produce a Matroska file). If no output file is specified\n");
-    fprintf(stderr, "                  one will be generated based on input file and the default\n");
-    fprintf(stderr, "                  extension associated with the format provided through -f.\n");
-    fprintf(stderr, "                  Note that you have to provide at least a valid output file\n");
-    fprintf(stderr, "                  extension or a format name through -f option.\n");
+    fprintf(stderr, "                  a matroska output file will be generated\n");
     fprintf(stderr, "\nAvailable output formats and codecs depend on system LibAV/FFMpeg libraries.\n");
     exit(exitcode);
 }
@@ -211,9 +208,7 @@ int main(int argc, char *argv[]) {
     }
 
     char *in_filename = argv[optind++];
-    if ((optind >= argc) && !format_name) {
-        ShowHelp(argv[0], EXIT_FAILURE);
-    }
+    if ((optind >= argc) && !format_name) format_name="matroska";
 
     av_log_set_level(AV_LOG_ERROR);
     //av_register_all();
