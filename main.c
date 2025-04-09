@@ -227,8 +227,7 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
 
-        if (!format_ctx->url) format_ctx->url=av_malloc(strlen(in_filename) + 1);
-        if (!format_ctx->url) {
+        if (!format_ctx->url && !(format_ctx->url=av_malloc(strlen(in_filename)+1))) {   
                 fprintf(stderr, "Could not allocate memory\n");
                 exit(1);
         } else {
